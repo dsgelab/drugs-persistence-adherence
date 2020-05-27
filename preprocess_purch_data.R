@@ -4,22 +4,35 @@ library(R.utils)
 library(data.table)
 library(dplyr)
 
-# Read finngen longitudinal file, merge with VNR mapping, save only purchases
+# Read in finngen files and VNRs mapping file
 dat <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_detailed_longitudinal.gz')
+cov_pheno <- fread('/home/cordioli/R5_pheno/R5_cov_pheno_1.0.txt.gz')
 vnr <- fread('/home/cordioli/drugs/data/vnr_mapping_6_5.tsv')
 
-# Select medication purchases data from 1998 and merge with vnr, write to disk
+# Filter medication purchases
 dat <- dat %>%
   filter(SOURCE == "PURCH") %>%
+  # cast event_day to Date
+  # cast CODE3 to integer for merging with VNRs
   mutate(APPROX_EVENT_DAY = as.Date(APPROX_EVENT_DAY),
          vnr = as.integer(CODE3)) %>%
+  # filter purchases from 1998 on
   filter(format(APPROX_EVENT_DAY,'%Y') >= 1998) %>%
+  # filter individuals in the cov_pheno file, for which the GWAS will be ran
+  filter(FINNGENID %in% cov_pheno$FINNGENID) %>%
+  # merge with VNRs
   left_join(vnr) %>%
+  # discard not needed columns (ICD version/category)
   select(-ICDVER, -CATEGORY)
 
 # Write to file and compress
 fwrite(dat, '/home/cordioli/drugs/data/finngen_R5_v3_purch_vnr', sep = '\t', quote = F)
 gzip('/home/cordioli/drugs/data/finngen_R5_v3_purch_vnr', destname='/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
+
+# Preprocess cov_pheno file - save only covariates
+cov_pheno <- fread('/home/cordioli/R5_pheno/R5_cov_pheno_1.0.txt.gz')
+cov_pheno <- cov_pheno[,1:grep("PC20", colnames(cov_pheno))]
+fwrite(cov_pheno, '/home/cordioli/drugs/data/R5_cov.txt', sep = '\t', quote = F)
 
 # Veeeeery weird behaviour in merging VNRs wtf
 # v_map <- unique(vnr$vnr) #integer
