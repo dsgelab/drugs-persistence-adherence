@@ -4,10 +4,16 @@ library(ggplot2)
 library(data.table)
 library(dplyr)
 
-dat <- fread('/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
-endpoints <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_endpoint.gz')
+source('/home/cordioli/drugs/adherence_funs.R')
 
-# # # # #
+purch <- fread('/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
+ep <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_endpoint.gz')
+covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
+
+# # # # # # # #
+#   STATINS   #
+# # # # # # # #
+
 # Define 'chronic' users: events that lead to a strong need of statins:
 # I9_ASO
 # I9_CHD
@@ -23,185 +29,270 @@ endpoints <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_endpoint.gz')
 # I9_STENOSIS	Occlusion and stenosis of arteries, not leading to stroke
 ep_chronic <- c('I9_ASO', 'I9_CHD', 'I9_ATHSCLE', 'I9_CEREBVASC', 'I9_INTRACRA', 'I9_SAH',
                 'I9_ICH', 'I9_OTHINTRACRA', 'I9_STR', 'I9_STR_SAH', 'I9_STR_EXH', 'I9_STENOSIS')
-ep_chronic <- intersect(ep_chronic, colnames(endpoints))
-ep_chronic_age <- paste0(ep_chronic, '_AGE')
 
-# Select people with onset of one of the endpoints and age of onset
-chronics <- endpoints %>%
-  select(FINNGENID, all_of(ep_chronic), all_of(ep_chronic_age)) %>%
-  filter_at(vars(-FINNGENID), any_vars(.==1)) %>%
-  select(FINNGENID, all_of(ep_chronic_age))
+# Individual trajectories
+st <- getTrajectories(purch,'^C10AA')
 
-# For each row, the min accross columns is the age of onset of the first of the CVD events
-min_age <- apply(chronics[,2:length(ep_chronic)], 1, min)
-chronics <- chronics %>%
-  mutate(age_cvd_ev = min_age) %>%
-  select(FINNGENID, age_cvd_ev)
+# Summarised trajectories
+stt <- summarizeTrajectories(st)
 
-sex <- endpoints %>%
-  select(FINNGENID, SEX)
+# Age first related event
+age_first <- getAgeFirstEndpoint(ep, stt$FINNGENID, ep_chronic)
 
+stt <- stt %>%
+  left_join(age_first) %>%
+  mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
+                             TRUE ~ 0))
 
-# # # # #
-# Select statins
-# Remove duplicated rows (same event with a different INDEX value)
-# Keep trajectories with at least 4 purchases
-# Keep trajectories with VNR info for all purchases
-st <- dat %>%
-  mutate(APPROX_EVENT_DAY = as.Date(APPROX_EVENT_DAY)) %>%
-  filter(grepl('^C10AA', CODE1)) %>%
-  group_by(FINNGENID) %>%
-  select(-INDEX) %>%
-  distinct() %>%
-  filter(n()>=4) %>%
-  filter(all(!is.na(pkoko_num))) %>%
-  arrange(FINNGENID, EVENT_AGE)
-length(unique(st$FINNGENID))
-
-# Compute days to next purchase
-# Compute n pills as pkoko_num * n pkg
-# TODO: Combine multiple purchase on the same day summing number of pills (where everything but n pills is the same)
-# st_new <- st %>%
-#   group_by_at(setdiff(names(st), c('n_pills', 'days_next_purch'))) %>%
-#   summarise(n_pills=sum(n_pills),
-#             days_next_purch = last(days_next_purch))
-# For the moment, just filter out all purch. with days_next == 0
-# TODO: impute n_packages where 0 (30 cases). just set it to 1 now
-st$CODE4[st$CODE4==0] <- 1
-st <- st %>%
-  mutate(n_pills = pkoko_num*CODE4,
-         days_next_purch = round( (lead(EVENT_AGE) - EVENT_AGE)*365.25)) %>%
-  filter(days_next_purch != 0 | is.na(days_next_purch))
-
-# - Adjust pills for each purchase: if I change type of statins after e.g. 20 days, and I've bought 100 pills, I should count only 20 pills for that purch
-# - TODO: Tag gap/discontinuation, define discontinuation better here: for looking at adherence better to have a wider gap, i wouldn't count that purch
-# otherwise and it would bias the adherence
-# - Compute pill/day
-st <- st %>%
-  mutate(change_type = CODE1 != lag(CODE1),
-         days_next_purch = case_when(days_next_purch >= 365*1.5 ~ NA_real_,
-                                     TRUE ~ days_next_purch),
-         n_pills = case_when(is.na(days_next_purch) ~ NA_real_,
-                             lead(change_type) == TRUE & days_next_purch <= n_pills ~ days_next_purch,
-                             TRUE ~ n_pills),
-         pills_norm = n_pills/days_next_purch)
-
-# Summarise adherence per each trajectory as tot pills/tot days
-t <- st %>%
-  group_by(FINNGENID) %>%
-  summarise(tot_pills = sum(n_pills, na.rm = T),
-            tot_days = sum(days_next_purch, na.rm = T),
-            mean_days = mean(days_next_purch, na.rm = T),
-            sd_days = sd(days_next_purch, na.rm = T),
-            mean_pills_norm = mean(pills_norm, na.rm = T),
-            sd_pills_norm = sd(pills_norm, na.rm = T),
-            tot_purch = n()-1,
-            age_first_purch = first(EVENT_AGE)) %>%
-  mutate(adherence = tot_pills/tot_days) %>%
-  filter_all(all_vars(!is.na(.))) %>%
-  left_join(chronics) %>%
-  mutate(chronic = case_when(!is.na(age_cvd_ev) ~ 1,
-                             TRUE ~ 0),
-         after_cvd = case_when(age_cvd_ev <= age_first_purch ~ 1,
-                               TRUE ~ 0),
-         adherence_bin = case_when(adherence >= 0.8 ~ 1,
-                                   TRUE ~ 0),
-         adherence_cat = case_when(adherence < 0.8 ~ 1,
-                                   between(adherence, 0.8, 1.2) ~ 2,
-                                   TRUE ~ 3))
-
-# Normal
-t_norm <- t %>%
-  filter(adherence <=1.2)
-
-# Overbuyers
-t_overb <- t %>%
-  filter(adherence > 1.2)
-
-
-# ppl taking half pill a day:
-# - adherence 0.45 - 0.55
-# - mean(pills_norm) 0.45 - 0.55
-# - SD(pills_norm) < 0.25
-t_half <- t %>%
-  filter(between(adherence, .45, .55),
-         between(mean_pills_norm, .45, .55),
-         sd_pills_norm <= 0.25)
-
-
+# Plots
 library(cowplot)
 library(dplyr)
 library(readr)
+library(grid)
+library(gridExtra)
 source("R/RainCloudPlots/tutorial_R/R_rainclouds.R")
 
-ggplot(data = t, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
+p1 <- ggplot(data = stt, aes(y = adherence, x = -.2)) +
   geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
   geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
   coord_flip() +
+  scale_x_continuous(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  ggtitle('Overall') +
   theme_minimal()
 
-ggplot(data = t_norm, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
+p2 <- ggplot(data = stt, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
   geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
   geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
   coord_flip() +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  ggtitle('Stratified - starting after CVD event') +
   theme_minimal()
+grid.arrange(p1, p2, nrow = 2)
 
-
-ggplot(t, aes(x=factor(chronic), y=adherence, group=chronic)) + 
-  geom_boxplot() +
-  theme_minimal() +
-  facet_wrap(~SEX)
-
-ggplot(t[t$adherence <= 1,], aes(x=factor(chronic), y=adherence, group=chronic)) + 
-  geom_boxplot() +
-  theme_minimal() +
-  facet_wrap(~SEX)
-
-ggplot(data = t[t$adherence <= 1,], aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
+palette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#D55E00")
+p3 <- ggplot(stt, aes(x=age_bin, y=adherence, fill=age_bin)) + 
   geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
   geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
   coord_flip() +
+  ggtitle('Adherence') +
   theme_minimal() +
-  facet_wrap(~SEX)
+  scale_fill_manual(values=palette) +
+  theme(legend.position = "none")
 
+p4 <- ggplot(stt, aes(x=age_bin, fill=age_bin)) +
+  geom_bar(stat = 'count') +
+  ggtitle('N individuals') +
+  labs(fill = "Age at first purch.") +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  scale_fill_manual(values=palette) +
+  theme_minimal()
+plot_grid(p4, p3, align = "h", ncol = 2, rel_widths = c(2/3, 1/3))
 
-ggplot(t[t$adherence <= 1,], aes(x=age_bin, y=adherence, group=age_bin)) + 
-  geom_boxplot() +
-  theme_minimal() +
-  facet_wrap(~factor(chronic))
+# Correlation adherence - age 1st purchase
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$age_first_purch), 4) ), 
+                          x = 0.1, y = 0.97, hjust = 0,
+                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p1 <- ggplot(stt, aes(x=adherence, y=age_first_purch)) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs Age at 1st purchase") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "Age at 1st purchase") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
 
-table(t_norm$age_bin)
+# Correlation adherence - tot days
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$tot_days), 4) ), 
+                          x = 0.1, y = 0.97, hjust = 0,
+                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p2 <- ggplot(stt, aes(x=adherence, y=tot_days/max(stt$tot_days))) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs Tot days") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "Tot days") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
 
-# # # Infer daily dose, examples
-case_half <- st[st$FINNGENID == 'FGCRS4JHU2', ]
-d <- density(case_half$days_norm, na.rm = T)
-plot(d)
-d <- density(case_half$pills_norm, na.rm = T)
-plot(d)
-case_one <- st[st$FINNGENID == 'FG334EMYMN', ]
-d <- density(case_one$pills_norm, na.rm = T)
-plot(d)
-case_oneb <- st[st$FINNGENID == 'FGJN6YVWVN', ]
-d <- density(case_oneb$pills_norm, na.rm = T)
-plot(d)
-d <- density(case_half$pills_norm, na.rm = T)
-plot(d)
+# Correlation adherence - SD days
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$sd_days_norm), 4) ), 
+                          x = 0.1, y = 0.97, hjust = 0,
+                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p3 <- ggplot(stt, aes(x=adherence, y=sd_days_norm)) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs SD(days between purchases)") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "SD days") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+grid.arrange(p1, p2, p3, ncol = 3)
+
+# # # # Infer daily dose, examples
+# par(mfrow=c(1,3))
+# case_oneb <- st[st$FINNGENID == 'FGJN6YVWVN', ]
+# d <- density(case_oneb$pills_norm, na.rm = T)
+# plot(d)
+# case_half <- st[st$FINNGENID == 'FGCRS4JHU2', ]
+# d <- density(case_half$pills_norm, na.rm = T)
+# plot(d)
+# p <- c(runif(30, min=0.35, max=0.6), runif(26, min=0.8, max=1.01))
+# d <- density(p, na.rm = T)
+# plot(d)
 
 
 # # # 
-
 # Merge phenotypes with covariates for GWAS
-cov_pheno <- fread('/home/cordioli/R5_pheno/R5_cov_pheno_1.0.txt.gz')
-cov_pheno <- cov_pheno[,1:grep("PC20", colnames(cov_pheno))]
+ad <- stt %>%
+  mutate(statins = adherence*10,
+         age_first_statins = age_first_purch) %>%
+  select(FINNGENID,statins,age_first_statins)
 
-t$SEX <- NULL
-cov_pheno <- cov_pheno %>%
-  left_join(t, by = 'FINNGENID')
+covs <- covs %>%
+  left_join(ad)
 
-fwrite(cov_pheno, '/home/cordioli/drugs/data/adherence_cov_pheno.txt', sep = '\t', quote = F)
+fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
 
-phenolist_binary <- colnames(cov_pheno)[grepl('_bin$', colnames(cov_pheno))]
-phenolist_categoric <- c('adherence', 'adherence_cat')
 
-fwrite(list(phenolist_binary), '/home/cordioli/drugs/data/adherence_binary_phenolist.txt', col.names = F)
-fwrite(list(phenolist_categoric), '/home/cordioli/drugs/data/adherence_quanti_phenolist.txt', col.names = F)
+# # # # # # # # # # # # # # # # # #  
+#   BLOOD PRESSURE MEDICATIONS    #
+# # # # # # # # # # # # # # # # # #
+
+# Define 'chronic' users: events that lead to a strong need of bp:
+
+ep_chronic <- c('I9_ASO', 'I9_CHD', 'I9_ATHSCLE', 'I9_CEREBVASC', 'I9_INTRACRA', 'I9_SAH',
+                'I9_ICH', 'I9_OTHINTRACRA', 'I9_STR', 'I9_STR_SAH', 'I9_STR_EXH', 'I9_STENOSIS')
+
+# Individual trajectories
+st <- getTrajectories(purch,'^C10AA')
+
+# Summarised trajectories
+stt <- summarizeTrajectories(st)
+
+# Age first related event
+age_first <- getAgeFirstEndpoint(ep, stt$FINNGENID, ep_chronic)
+
+stt <- stt %>%
+  left_join(age_first) %>%
+  mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
+                             TRUE ~ 0))
+
+# Plots
+library(cowplot)
+library(dplyr)
+library(readr)
+library(grid)
+library(gridExtra)
+source("R/RainCloudPlots/tutorial_R/R_rainclouds.R")
+
+p1 <- ggplot(data = stt, aes(y = adherence, x = -.2)) +
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+  coord_flip() +
+  scale_x_continuous(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  ggtitle('Overall') +
+  theme_minimal()
+
+p2 <- ggplot(data = stt, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+  coord_flip() +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  ggtitle('Stratified - starting after CVD event') +
+  theme_minimal()
+grid.arrange(p1, p2, nrow = 2)
+
+palette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#D55E00")
+p3 <- ggplot(stt, aes(x=age_bin, y=adherence, fill=age_bin)) + 
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+  coord_flip() +
+  ggtitle('Adherence') +
+  theme_minimal() +
+  scale_fill_manual(values=palette) +
+  theme(legend.position = "none")
+
+p4 <- ggplot(stt, aes(x=age_bin, fill=age_bin)) +
+  geom_bar(stat = 'count') +
+  ggtitle('N individuals') +
+  labs(fill = "Age at first purch.") +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  scale_fill_manual(values=palette) +
+  theme_minimal()
+plot_grid(p4, p3, align = "h", ncol = 2, rel_widths = c(2/3, 1/3))
+
+# Correlation adherence - age 1st purchase
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$age_first_purch), 4) ), 
+                         x = 0.1, y = 0.97, hjust = 0,
+                         gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p1 <- ggplot(stt, aes(x=adherence, y=age_first_purch)) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs Age at 1st purchase") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "Age at 1st purchase") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+
+# Correlation adherence - tot days
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$tot_days), 4) ), 
+                         x = 0.1, y = 0.97, hjust = 0,
+                         gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p2 <- ggplot(stt, aes(x=adherence, y=tot_days/max(stt$tot_days))) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs Tot days") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "Tot days") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+
+# Correlation adherence - SD days
+grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$sd_days_norm), 4) ), 
+                         x = 0.1, y = 0.97, hjust = 0,
+                         gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+p3 <- ggplot(stt, aes(x=adherence, y=sd_days_norm)) + 
+  geom_point(alpha = .3) + 
+  ggtitle("Adherence vs SD(days between purchases)") + 
+  geom_smooth(method=lm, se=FALSE) + 
+  scale_x_continuous(name = "Adherence") + 
+  scale_y_continuous(name = "SD days") + 
+  annotation_custom(grob) + 
+  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+grid.arrange(p1, p2, p3, ncol = 3)
+
+# # # # Infer daily dose, examples
+# par(mfrow=c(1,3))
+# case_oneb <- st[st$FINNGENID == 'FGJN6YVWVN', ]
+# d <- density(case_oneb$pills_norm, na.rm = T)
+# plot(d)
+# case_half <- st[st$FINNGENID == 'FGCRS4JHU2', ]
+# d <- density(case_half$pills_norm, na.rm = T)
+# plot(d)
+# p <- c(runif(30, min=0.35, max=0.6), runif(26, min=0.8, max=1.01))
+# d <- density(p, na.rm = T)
+# plot(d)
+
+
+# # # 
+# Merge phenotypes with covariates for GWAS
+ad <- stt %>%
+  mutate(statins = adherence*10,
+         age_first_statins = age_first_purch) %>%
+  select(FINNGENID,statins,age_first_statins)
+
+covs <- covs %>%
+  left_join(ad)
+
+fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
+
+
+
+phenolist <- c('adherence')
+fwrite(list(phenolist), '/home/cordioli/drugs/data/adherence_phenolist.txt', col.names = F)
