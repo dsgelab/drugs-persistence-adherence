@@ -30,7 +30,7 @@ covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
 ep_chronic <- c('I9_ASO', 'I9_CHD', 'I9_ATHSCLE', 'I9_CEREBVASC', 'I9_INTRACRA', 'I9_SAH',
                 'I9_ICH', 'I9_OTHINTRACRA', 'I9_STR', 'I9_STR_SAH', 'I9_STR_EXH', 'I9_STENOSIS')
 
-# Individual trajectories
+# Complete trajectories
 st <- getTrajectories(purch,'^C10AA')
 
 # Summarised trajectories
@@ -147,7 +147,7 @@ grid.arrange(p1, p2, p3, ncol = 3)
 # # # 
 # Merge phenotypes with covariates for GWAS
 ad <- stt %>%
-  mutate(statins = adherence*10,
+  mutate(statins = adherence_norm,
          age_first_statins = age_first_purch) %>%
   select(FINNGENID,statins,age_first_statins)
 
@@ -184,7 +184,7 @@ bpp <- summarizeTrajectories(bp)
 # # # 
 # Merge phenotypes with covariates for GWAS
 ad <- bpp %>%
-  mutate(blood_pressure = adherence*10,
+  mutate(blood_pressure = adherence_norm,
          age_first_blood_pressure = age_first_purch) %>%
   select(FINNGENID,blood_pressure,age_first_blood_pressure)
 
@@ -235,7 +235,7 @@ cldi <- cl %>%
 # # # 
 # Merge phenotypes with covariates for GWAS
 ad <- cldi %>%
-  mutate(clopi_dipy = adherence*10,
+  mutate(clopi_dipy = as.numeric(scale(adherence)),
          age_first_clopi_dipy = age_first_purch) %>%
   select(FINNGENID,clopi_dipy,age_first_clopi_dipy)
 
@@ -248,3 +248,5 @@ fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t',
 
 phenolist <- c('statins','blood_pressure','clopi_dipy')
 fwrite(list(phenolist), '/home/cordioli/drugs/data/adherence_phenolist.txt', col.names = F)
+
+system('gsutil cp /home/cordioli/drugs/data/R5_cov_pheno_adherence.txt gs://mattia/drugs/')

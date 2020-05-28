@@ -61,7 +61,8 @@ summarizeTrajectories <- function(traj) {
     filter_all(all_vars(!is.na(.))) %>%
     # filter out outliers
     filter(adherence <= 1.1) %>%
-    mutate(age_bin = cut(age_first_purch, 5))
+    mutate(age_bin = cut(age_first_purch, 5)) %>%
+    mutate(adherence_norm = as.numeric(scale(adherence)))
 }
 
 
