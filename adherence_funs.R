@@ -20,7 +20,7 @@ getTrajectories <- function(dat,ATCs) {
     # filter trajectories with VNR info (package size) for all the events
     filter(all(!is.na(pkoko_num))) %>%
     # for each individual, order by event_age
-    arrange(FINNGENID, EVENT_AGE)  %>%
+    arrange(EVENT_AGE, .by_group = T)  %>%
     # calculate n pills for each purchse
     mutate(n_pills = pkoko_num*CODE4,
            # compute difference between purchases
@@ -43,7 +43,7 @@ getTrajectories <- function(dat,ATCs) {
 }
 
 
-summarizeTrajectories <- function(traj) {
+summarizeTrajectories <- function(traj, thr = 1.1) {
   t <- traj %>%
     group_by(FINNGENID) %>%
     summarise(tot_pills = sum(n_pills, na.rm = T),
@@ -60,7 +60,7 @@ summarizeTrajectories <- function(traj) {
     # filter out trajectories which might have NA measures (e.g. if there is one purchase left)
     filter_all(all_vars(!is.na(.))) %>%
     # filter out outliers
-    filter(adherence <= 1.1) %>%
+    filter(adherence <= thr) %>%
     mutate(age_bin = cut(age_first_purch, 5)) %>%
     mutate(adherence_norm = as.numeric(scale(adherence)))
 }
@@ -84,4 +84,56 @@ getAgeFirstEndpoint <- function(dat,ids,endpoints) {
     mutate(age_first_ev = min_age) %>%
     select(FINNGENID, age_first_ev)
   return(d)
+}
+
+
+# Bayesian classification of daily dose
+classifyDailyDose <- function(trajectory) {
+  n <- length(trajectory)
+  # Estimation starts from here
+  #Set parameter values
+  mus = c(1, 0.5) #two groups have fixed mean: the two doses we assume for that drug
+  sigmas = c(0.15, 0.15) #and fixed SD
+  n.iter = 1000 #Gibbs sampler iterations
+  n.burnin = 50 #Burnin period will be discarded from final results (iterations 1,...,n.burnin)
+  
+  #Initialize variables for the sampler
+  gr = sample(c(1,2), prob = c(0.8, 0.2), size = n, replace = T) #initialize group memberships
+  prop = mean(gr == 1) #initialize proportion to their empirical estimate
+  sum.gr = matrix(0, ncol = 2, nrow = n) #col1 counts membership in group 1, col2 in group2
+  res.prop = rep(NA, n.iter - n.burnin) #posterior distribution of prop
+  
+  #Gibbs sampler
+  for(ii in 1:n.iter){
+    
+    prop = rbeta(1, 0.5 + sum(gr == 1), 0.5 + sum(gr == 2)) #prior for prop is Beta(0.5, 0.5)
+    if(ii > n.burnin) res.prop[ii-n.burnin] = prop
+    
+    loglk = cbind( log(prop) + dnorm(x, mus[1], sigmas[1], log = T), log(1-prop) + dnorm(x, mus[2], sigmas[2], log = T) )
+    pr.1 = 1/(1 + exp(loglk[,2]-loglk[,1])) #probability of group 1 for each observation
+    gr = 2 - rbinom(n, prob = pr.1, size =  1) #sample group membership, where pr.1 is probability of 1, and other outcome value is 2
+    
+    if(ii > n.burnin){
+      sum.gr[gr == 1, 1] = sum.gr[gr == 1, 1] + 1
+      sum.gr[gr == 2, 2] = sum.gr[gr == 2, 2] + 1
+    }
+  }
+  
+  p.1 <- mean(res.prop) # probability of dose 1. p.2 = 1-p.1
+  
+  if (p.1 >= .6) {dose <- 1
+  }else if (p.1 <=.4) {dose <- 2
+  }else {dose <- 0
+  }
+  
+  return(dose)
+  
+  # Classify the individual as taking dose 1 if p.1 >60%, dose 2 if p.2 < 40%, NA otherwise
+  
+  
+  #layout(matrix(c(1,1,2,2), nrow = 1))
+  # barplot(t(sum.gr)/(n.iter - n.burnin), col = c("blue","white"), main = "Membership in group 1 (in blue)" )
+  #plot(density(x))
+  #hist(res.prop, breaks = 40, col = "limegreen", main ="posterior of proportion of 1")
+  
 }
