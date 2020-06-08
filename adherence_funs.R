@@ -62,7 +62,7 @@ summarizeTrajectories <- function(traj, thr = 1.1) {
     # filter out outliers
     filter(adherence <= thr) %>%
     mutate(age_bin = cut(age_first_purch, 5)) %>%
-    mutate(adherence_norm = as.numeric(scale(adherence)))
+    mutate(adherence_std = as.numeric(scale(adherence)))
 }
 
 
@@ -136,4 +136,115 @@ classifyDailyDose <- function(trajectory) {
   #plot(density(x))
   #hist(res.prop, breaks = 40, col = "limegreen", main ="posterior of proportion of 1")
   
+}
+
+
+# # # Plots
+plotAdherenceDensity <- function(df) {
+  
+  require(cowplot)
+  require(dplyr)
+  require(readr)
+  require(grid)
+  require(gridExtra)
+  source("R/RainCloudPlots/tutorial_R/R_rainclouds.R")
+  
+  p1 <- ggplot(data = df, aes(y = adherence, x = -.2)) +
+    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+    geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+    coord_flip() +
+    scale_x_continuous(name = "") +
+    scale_y_continuous(breaks = c(0, 0.5, 1)) +
+    ggtitle('Overall') +
+    theme_minimal()
+  
+  p2 <- ggplot(data = df, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
+    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+    geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+    coord_flip() +
+    scale_x_discrete(name = "") +
+    scale_y_continuous(breaks = c(0, 0.5, 1)) +
+    ggtitle('Starting after event') +
+    theme_minimal()
+  
+  return(grid.arrange(p1, p2, nrow = 2))
+}
+
+
+plotAdherenceByAge <- function(df) {
+  
+  require(cowplot)
+  require(dplyr)
+  require(readr)
+  require(grid)
+  require(gridExtra)
+  source("R/RainCloudPlots/tutorial_R/R_rainclouds.R")
+  
+  palette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#D55E00")
+  p3 <- ggplot(df, aes(x=age_bin, y=adherence, fill=age_bin)) + 
+    geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
+    geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
+    coord_flip() +
+    ggtitle('Adherence') +
+    theme_minimal() +
+    scale_fill_manual(values=palette) +
+    theme(legend.position = "none")
+  
+  p4 <- ggplot(df, aes(x=age_bin, fill=age_bin)) +
+    geom_bar(stat = 'count') +
+    ggtitle('N individuals') +
+    labs(fill = "Age at first purch.") +
+    scale_x_discrete(name = "") +
+    scale_y_continuous(breaks = c(0, 0.5, 1)) +
+    scale_fill_manual(values=palette) +
+    theme_minimal()
+  
+  return(plot_grid(p4, p3, align = "h", ncol = 2, rel_widths = c(2/3, 1/3)))
+}
+
+
+plotCorrelations <- function(df) {
+  
+  require(gridExtra)
+  
+  # Correlation adherence - age 1st purchase
+  grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$age_first_purch), 4) ), 
+                           x = 0.1, y = 0.97, hjust = 0,
+                           gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+  p1 <- ggplot(stt, aes(x=adherence, y=age_first_purch)) + 
+    geom_point(alpha = .3) + 
+    ggtitle("Adherence vs Age at 1st purchase") + 
+    geom_smooth(method=lm, se=FALSE) + 
+    scale_x_continuous(name = "Adherence") + 
+    scale_y_continuous(name = "Age at 1st purchase") + 
+    annotation_custom(grob) + 
+    theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+  
+  # Correlation adherence - tot days
+  grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$tot_days), 4) ), 
+                           x = 0.1, y = 0.97, hjust = 0,
+                           gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+  p2 <- ggplot(stt, aes(x=adherence, y=tot_days/max(stt$tot_days))) + 
+    geom_point(alpha = .3) + 
+    ggtitle("Adherence vs Tot days") + 
+    geom_smooth(method=lm, se=FALSE) + 
+    scale_x_continuous(name = "Adherence") + 
+    scale_y_continuous(name = "Tot days") + 
+    annotation_custom(grob) + 
+    theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+  
+  # Correlation adherence - SD days
+  grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$sd_days_norm), 4) ), 
+                           x = 0.1, y = 0.97, hjust = 0,
+                           gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
+  p3 <- ggplot(stt, aes(x=adherence, y=sd_days_norm)) + 
+    geom_point(alpha = .3) + 
+    ggtitle("Adherence vs SD(days between purchases)") + 
+    geom_smooth(method=lm, se=FALSE) + 
+    scale_x_continuous(name = "Adherence") + 
+    scale_y_continuous(name = "SD days") + 
+    annotation_custom(grob) + 
+    theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
+  
+  return(grid.arrange(p1, p2, p3, ncol = 3))
 }
