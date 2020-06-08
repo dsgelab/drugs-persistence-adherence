@@ -6,9 +6,12 @@ library(dplyr)
 
 source('/home/cordioli/drugs/adherence_funs.R')
 
+write.flag <- T
+
 purch <- fread('/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
 ep <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_endpoint.gz')
-covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
+# covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
+
 
 # # # # # # # #
 #   STATINS   #
@@ -44,117 +47,24 @@ stt <- stt %>%
   mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
                              TRUE ~ 0))
 
-# Plots
-library(cowplot)
-library(dplyr)
-library(readr)
-library(grid)
-library(gridExtra)
-source("R/RainCloudPlots/tutorial_R/R_rainclouds.R")
-
-p1 <- ggplot(data = stt, aes(y = adherence, x = -.2)) +
-  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
-  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
-  coord_flip() +
-  scale_x_continuous(name = "") +
-  scale_y_continuous(breaks = c(0, 0.5, 1)) +
-  ggtitle('Overall') +
-  theme_minimal()
-
-p2 <- ggplot(data = stt, aes(y = adherence, x = factor(chronic), fill = factor(chronic))) +
-  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
-  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
-  coord_flip() +
-  scale_x_discrete(name = "") +
-  scale_y_continuous(breaks = c(0, 0.5, 1)) +
-  ggtitle('Stratified - starting after CVD event') +
-  theme_minimal()
-grid.arrange(p1, p2, nrow = 2)
-
-palette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#D55E00")
-p3 <- ggplot(stt, aes(x=age_bin, y=adherence, fill=age_bin)) + 
-  geom_flat_violin(position = position_nudge(x = .2, y = 0), alpha = .8) +
-  geom_boxplot(width = .1, guides = FALSE, alpha = 0.5) +
-  coord_flip() +
-  ggtitle('Adherence') +
-  theme_minimal() +
-  scale_fill_manual(values=palette) +
-  theme(legend.position = "none")
-
-p4 <- ggplot(stt, aes(x=age_bin, fill=age_bin)) +
-  geom_bar(stat = 'count') +
-  ggtitle('N individuals') +
-  labs(fill = "Age at first purch.") +
-  scale_x_discrete(name = "") +
-  scale_y_continuous(breaks = c(0, 0.5, 1)) +
-  scale_fill_manual(values=palette) +
-  theme_minimal()
-plot_grid(p4, p3, align = "h", ncol = 2, rel_widths = c(2/3, 1/3))
-
-# Correlation adherence - age 1st purchase
-grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$age_first_purch), 4) ), 
-                          x = 0.1, y = 0.97, hjust = 0,
-                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
-p1 <- ggplot(stt, aes(x=adherence, y=age_first_purch)) + 
-  geom_point(alpha = .3) + 
-  ggtitle("Adherence vs Age at 1st purchase") + 
-  geom_smooth(method=lm, se=FALSE) + 
-  scale_x_continuous(name = "Adherence") + 
-  scale_y_continuous(name = "Age at 1st purchase") + 
-  annotation_custom(grob) + 
-  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
-
-# Correlation adherence - tot days
-grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$tot_days), 4) ), 
-                          x = 0.1, y = 0.97, hjust = 0,
-                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
-p2 <- ggplot(stt, aes(x=adherence, y=tot_days/max(stt$tot_days))) + 
-  geom_point(alpha = .3) + 
-  ggtitle("Adherence vs Tot days") + 
-  geom_smooth(method=lm, se=FALSE) + 
-  scale_x_continuous(name = "Adherence") + 
-  scale_y_continuous(name = "Tot days") + 
-  annotation_custom(grob) + 
-  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
-
-# Correlation adherence - SD days
-grob = grobTree(textGrob(paste("Pearson Correlation : ", round(cor(stt$adherence, stt$sd_days_norm), 4) ), 
-                          x = 0.1, y = 0.97, hjust = 0,
-                          gp = gpar(col = "blue", fontsize = 11, fontface = "bold")))
-p3 <- ggplot(stt, aes(x=adherence, y=sd_days_norm)) + 
-  geom_point(alpha = .3) + 
-  ggtitle("Adherence vs SD(days between purchases)") + 
-  geom_smooth(method=lm, se=FALSE) + 
-  scale_x_continuous(name = "Adherence") + 
-  scale_y_continuous(name = "SD days") + 
-  annotation_custom(grob) + 
-  theme(plot.title = element_text(hjust = 0.5), panel.background = element_blank(), axis.line = element_line(color="black"), axis.line.x = element_line(color="black"))
-grid.arrange(p1, p2, p3, ncol = 3)
-
-# # # # Infer daily dose, examples
-# par(mfrow=c(1,3))
-# case_oneb <- st[st$FINNGENID == 'FGJN6YVWVN', ]
-# d <- density(case_oneb$pills_norm, na.rm = T)
-# plot(d)
-# case_half <- st[st$FINNGENID == 'FGCRS4JHU2', ]
-# d <- density(case_half$pills_norm, na.rm = T)
-# plot(d)
-# p <- c(runif(30, min=0.35, max=0.6), runif(26, min=0.8, max=1.01))
-# d <- density(p, na.rm = T)
-# plot(d)
-
+if (write.flag == T) {
+  fwrite(stt, '/home/cordioli/drugs/data/statins_summarized.txt', sep = '\t', quote = F)
+}
 
 # # # 
 # Merge phenotypes with covariates for GWAS
 ad <- stt %>%
-  mutate(statins = adherence_norm,
+  mutate(statins = adherence_std,
          age_first_statins = age_first_purch) %>%
   select(FINNGENID,statins,age_first_statins)
 
 covs <- covs %>%
   left_join(ad)
 
-fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
+if (write.flag == T) {
+  fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
+}
+
 
 
 # # # # # # # # # # # # # # # # # #  
@@ -181,10 +91,14 @@ bpp <- summarizeTrajectories(bp)
 #   mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
 #                              TRUE ~ 0))
 
+if (write.flag == T) {
+  fwrite(bpp, '/home/cordioli/drugs/data/bp_summarized.txt', sep = '\t', quote = F)
+}
+
 # # # 
 # Merge phenotypes with covariates for GWAS
 ad <- bpp %>%
-  mutate(blood_pressure = adherence_norm,
+  mutate(blood_pressure = adherence_std,
          age_first_blood_pressure = age_first_purch) %>%
   select(FINNGENID,blood_pressure,age_first_blood_pressure)
 
@@ -193,8 +107,9 @@ covs <- fread('/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt')
 covs <- covs %>%
   left_join(ad)
 
-fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
-
+if (write.flag == T) {
+  fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
+}
 
 # # # # # # # # # # # # # # # # # #  
 #   CLOPIDOGREL & ASA+DIP   #
@@ -231,6 +146,9 @@ cldi <- cl %>%
 #   left_join(age_first) %>%
 #   mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
 #                              TRUE ~ 0))
+if (write.flag == T) {
+  fwrite(cldi, '/home/cordioli/drugs/data/clopi_dipy_summarized.txt', sep = '\t', quote = F)
+}
 
 # # # 
 # Merge phenotypes with covariates for GWAS
@@ -243,10 +161,101 @@ covs <- fread('/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt')
 
 covs <- covs %>%
   left_join(ad)
+if (write.flag == T) {
+  fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
+}
+
+
+# # # # # # # # # # #
+#   BREAST CANCER   #
+# # # # # # # # # # #
+
+# If initiated, the medications should continue to at least  ~5 years after the diagnosis date. Some cancers require a longer period, but that is the general minimum.
+# They usually start within 1 year after the diagnosis (after chemotherapy etc is done), and a successful therapy could therefore be defined as at least 4 years of purchases. The C3_BREAST diagnosis in FinnGen endpoints is a good one.
+# These four are ATC-kodes that are relevant, and they should be combined to one variable, because in many cases, one can be switched to another:
+# L02BA01 Tamoxifen
+# L02BG04 Letrozole
+# L02BG06 Exemestane
+# L02BG03 Anastrozole
+# In brief, the timeline would be
+# If a person has started of any of the 4 medications -> looking at whether the purchases discontinue before 4 years. Some discontinuation may of course be that the breast cancer has recurred and requires new aggressive treatments,
+# how have you handled such cases for other diseases?
+ 
+ep_chronic <- c('C3_BREAST')
+
+# Complete trajectories
+bc <- getTrajectories(purch,'^L02B(A01|G04|G06|G03)')
+
+# Summarised trajectories
+bcc <- summarizeTrajectories(bc)
+
+# Age first related event
+age_first <- getAgeFirstEndpoint(ep, bcc$FINNGENID, ep_chronic)
+
+bcc <- bcc %>%
+  left_join(age_first) %>%
+  mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
+                             TRUE ~ 0))
+
+
+if (write.flag == T) {
+  fwrite(bcc, '/home/cordioli/drugs/data/breast_cancer_summarized.txt', sep = '\t', quote = F)
+}
+
+
+# # # 
+# Exclude non-chronic and te-standardize adherence for GWAS
+bcc <- bcc %>%
+  filter(chronic == 1) %>%
+  mutate(adherence_std = as.numeric(scale(adherence)))
+
+# Merge phenotypes with covariates for GWAS
+covs <- fread('/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt')
+
+ad <- bcc %>%
+  mutate(breast_canc = adherence_std,
+         age_first_breast_canc = age_first_purch) %>%
+  select(FINNGENID,breast_canc,age_first_breast_canc)
+
+covs <- covs %>%
+  left_join(ad)
 
 fwrite(covs, '/home/cordioli/drugs/data/R5_cov_pheno_adherence.txt', sep = '\t', quote = F)
 
-phenolist <- c('statins','blood_pressure','clopi_dipy')
+
+
+# # # # # # # # # # #
+#   EPILEPSY        #
+# # # # # # # # # # #
+
+# 
+
+# m <- fread('/home/cordioli/drugs/data/epilepsy_meds.txt')
+# m <- m[m$perc_epilepsy>=40,]
+# sort(m$drug_code)
+
+# ep_chronic <- c('G6_EPLEPSY')
+# 
+# # Complete trajectories
+# epi <- getTrajectories(purch,'^N03A|B02|B52|D01|F02|F03|F04|G04|G06|X14|X15|X17|X18|X22|X23')
+# 
+# # Summarised trajectories
+# epii <- summarizeTrajectories(df, 10)
+# 
+# # Age first related event
+# age_first <- getAgeFirstEndpoint(ep, epii$FINNGENID, ep_chronic)
+# 
+# epii <- epii %>%
+#   left_join(age_first) %>%
+#   mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
+#                              TRUE ~ 0))
+# # if (write.flag == T) {
+# #   fwrite(epii, '/home/cordioli/drugs/data/breast_cancer_summarized.txt', sep = '\t', quote = F)
+# # }
+# 
+
+
+phenolist <- c('statins','blood_pressure','clopi_dipy','breast_canc')
 fwrite(list(phenolist), '/home/cordioli/drugs/data/adherence_phenolist.txt', col.names = F)
 
 system('gsutil cp /home/cordioli/drugs/data/R5_cov_pheno_adherence.txt gs://mattia/drugs/')
