@@ -1,7 +1,7 @@
 #!/bin/bash
 
-readarray -t traits < /home/cordioli/drugs/data/adherence_phenolist.txt
-job_id=882fde53-de3d-4cae-9265-3089a2496d1c
+readarray -t traits < /home/cordioli/drugs/data/adherence_phenolist_breast_canc.txt
+job_id=cfc341f1-2fba-4d31-b07a-a4e52a57f27b
 
 conda activate ldsc
 
@@ -10,6 +10,9 @@ do
 
 gsutil -m cp gs://dsge-cromwell/saige/${job_id}/call-test_combine/shard-*/sub.test_combine/*/call-combine/${t}.gz /home/cordioli/drugs/results/
 gsutil -m cp gs://dsge-cromwell/saige/${job_id}/call-test_combine/shard-*/sub.test_combine/*/call-combine/attempt-*/${t}.gz /home/cordioli/drugs/results/
+
+gsutil -m cp gs://dsge-cromwell/saige/${job_id}/call-test_combine/shard-*/sub.test_combine/*/call-combine/${t}.pheweb.gz /home/cordioli/drugs/results/
+gsutil -m cp gs://dsge-cromwell/saige/${job_id}/call-test_combine/shard-*/sub.test_combine/*/call-combine/attempt-*/${t}.pheweb.gz /home/cordioli/drugs/results/
 
 # unzip and change SNP id column
 zcat /home/cordioli/drugs/results/${t}.gz | awk 'BEGIN{FS=OFS="\t"} {gsub("chr", "", $3); gsub("_[ATGC]*_[ATGC]$", "", $3)} 1' > /home/cordioli/drugs/results/${t}

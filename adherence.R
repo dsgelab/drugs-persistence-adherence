@@ -6,11 +6,11 @@ library(dplyr)
 
 source('/home/cordioli/drugs/adherence_funs.R')
 
-write.flag <- T
+write.flag <- F
 
 purch <- fread('/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
 ep <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_endpoint.gz')
-# covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
+covs <- fread('/home/cordioli/drugs/data/R5_cov.txt')
 
 
 # # # # # # # #
@@ -46,6 +46,20 @@ stt <- stt %>%
   left_join(age_first) %>%
   mutate(chronic = case_when(age_first_ev <= age_first_purch ~ 1,
                              TRUE ~ 0))
+
+stt <- stt %>%
+  left_join(covs)
+
+# Difference between sexes
+t.test(stt$adherence[stt$SEX_IMPUTED==0], stt$adherence[stt$SEX_IMPUTED==1], alternative = 'greater')$p.value
+
+# Primary VS secondary prevention
+t.test(stt$adherence[stt$chronic==0], stt$adherence[stt$chronic==1], paired = F)
+
+# Regularity
+cor(stt$adherence,stt$sd_days)
+cor.test(stt$adherence,stt$sd_days)
+
 
 if (write.flag == T) {
   fwrite(stt, '/home/cordioli/drugs/data/statins_summarized.txt', sep = '\t', quote = F)
@@ -83,6 +97,19 @@ bp <- getTrajectories(purch,'^C0(2|3|8|9)')
 # Summarised trajectories
 bpp <- summarizeTrajectories(bp)
 
+bpp <- bpp %>%
+  left_join(covs)
+
+# Difference between sexes
+t.test(bpp$adherence[bpp$SEX_IMPUTED==0], bpp$adherence[bpp$SEX_IMPUTED==1])$p.value
+
+
+cor(bpp$adherence,bpp$sd_days)
+cor.test(bpp$adherence,bpp$sd_days)$p.value
+
+summary(lm(adherence ~ sd_days, data = bpp))
+
+# h2: statins:  0.0242, 2.19E-03. Bp:  0.0394, 1.49E-07
 # Age first related event
 # age_first <- getAgeFirstEndpoint(ep, stt$FINNGENID, ep_chronic)
 

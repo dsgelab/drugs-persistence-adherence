@@ -1,6 +1,7 @@
 # conda activate ldsc
 # 
 # sumstats_list=$(ls -d /home/cordioli/drugs/sumstats_for_rg/*gz | tr '\n' ',')
+# sumstats_list=${sumstats_list::-1}
 # 
 # /home/cordioli/ldsc/ldsc.py \
 # --rg /home/cordioli/drugs/results/statins.sumstats.gz,${sumstats_list} \
@@ -8,17 +9,27 @@
 # --w-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
 # --out /home/cordioli/drugs/results/statins_RGS
 # 
+# 
 # /home/cordioli/ldsc/ldsc.py \
 # --rg /home/cordioli/drugs/results/blood_pressure.sumstats.gz,${sumstats_list} \
 # --ref-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
 # --w-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
 # --out /home/cordioli/drugs/results/blood_pressure_RGS
 # 
+# 
 # /home/cordioli/ldsc/ldsc.py \
 # --rg /home/cordioli/drugs/results/clopi_dipy.sumstats.gz,${sumstats_list} \
 # --ref-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
 # --w-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
 # --out /home/cordioli/drugs/results/clopi_dipy_RGS
+# 
+# 
+# /home/cordioli/ldsc/ldsc.py \
+# --rg /home/cordioli/drugs/results/breast_canc.sumstats.gz,${sumstats_list} \
+# --ref-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
+# --w-ld-chr /home/cordioli/ldsc/eur_w_ld_chr/ \
+# --out /home/cordioli/drugs/results/breast_canc_RGS
+
 
 # # # # # # # # #
 
@@ -68,13 +79,22 @@ cols.num <- seq(3,12)
 d[cols.num] <- sapply(d[cols.num],as.numeric)
 
 dd <- d[-which(d$p2=="h2 | SE | p"),]
+
 dd$p_label <- paste0('p: ', round(dd$p, 4))
 
+dd <- dd[which(dd$p2 %in% c("Educational_Attainment_excl23andme_Lee_2018_NatGen_formatted.sumstats.gz",
+                           "systolic_BP_93_irnt.ldsc.imputed_v3.both_sexes.tsv.bgz",
+                           "LDL_UKBB_lifted.sumstats.gz",
+                           "depressive_symptoms.sumstats.gz",
+                           "risk_taking.sumstats.gz",
+                           "schizophrenia.sumstats.gz",
+                           "subjective_well_being.sumstats.gz")), ]
+ 
 library(ggplot2)
 ggplot(dd, aes(x=rg, y=factor(p2))) +
   geom_point() +
   geom_errorbarh(aes(xmin=rg-1.96*se, xmax=rg+1.96*se), height=0.1) +
-  geom_text(aes(label=p_label), vjust=-1) +
+  # geom_text(aes(label=p_label), vjust=-1) +
   geom_vline(aes(xintercept = 0), alpha=.5) +
   theme_minimal() +
   facet_grid(.~factor(p1))

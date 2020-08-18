@@ -89,7 +89,8 @@ getAgeFirstEndpoint <- function(dat,ids,endpoints) {
 
 # Bayesian classification of daily dose
 classifyDailyDose <- function(trajectory) {
-  n <- length(trajectory)
+  x <- trajectory
+  n <- length(x)
   # Estimation starts from here
   #Set parameter values
   mus = c(1, 0.5) #two groups have fixed mean: the two doses we assume for that drug
