@@ -4,10 +4,16 @@ library(R.utils)
 library(data.table)
 library(dplyr)
 
+# Mount finngen data bucket
+system("gcsfuse --only-dir finngen_R6/phenotype_2.0/data/ --file-mode 444 finngen-production-library-red /home/cordioli/mount_fg/")
+
 # Read in finngen files and VNRs mapping file
-dat <- fread('/home/cordioli/R5_pheno/finngen_R5_v3_detailed_longitudinal.gz')
-cov_pheno <- fread('/home/cordioli/R5_pheno/R5_cov_pheno_1.0.txt.gz')
+dat <- fread('/home/cordioli/mount_fg/finngen_R6_v2_detailed_longitudinal.gz')
+cov_pheno <- fread('/home/cordioli/mount_fg/finngen_R6_cov_pheno_1.0.txt.gz')
 vnr <- fread('/home/cordioli/drugs/data/vnr_mapping_6_5.tsv')
+
+# Unmount finngen data
+system("fusermount -u /home/cordioli/mount_fg")
 
 # Filter medication purchases
 dat <- dat %>%
@@ -26,13 +32,11 @@ dat <- dat %>%
   select(-ICDVER, -CATEGORY)
 
 # Write to file and compress
-fwrite(dat, '/home/cordioli/drugs/data/finngen_R5_v3_purch_vnr', sep = '\t', quote = F)
-gzip('/home/cordioli/drugs/data/finngen_R5_v3_purch_vnr', destname='/home/cordioli/drugs/data/R5_v3_purch_vnr_98.gz')
+fwrite(dat, '/home/cordioli/drugs/data/finngen_R6_v2_purch_vnr_98.gz', sep = '\t', quote = F, compress = "gzip")
 
 # Preprocess cov_pheno file - save only covariates
-cov_pheno <- fread('/home/cordioli/R5_pheno/R5_cov_pheno_1.0.txt.gz')
 cov_pheno <- cov_pheno[,1:grep("PC20", colnames(cov_pheno))]
-fwrite(cov_pheno, '/home/cordioli/drugs/data/R5_cov.txt', sep = '\t', quote = F)
+fwrite(cov_pheno, '/home/cordioli/drugs/data/finngen_R6_cov.txt', sep = '\t', quote = F)
 
 # Veeeeery weird behaviour in merging VNRs wtf
 # v_map <- unique(vnr$vnr) #integer
