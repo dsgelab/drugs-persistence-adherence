@@ -1,0 +1,2 @@
+gs://mattia-ukb/sumstats/finngen_R7_statins.saige.gz	nfe	90617
+gs://mattia-ukb/sumstats/ukbb_statins.gz	nfe	37783

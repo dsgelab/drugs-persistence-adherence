@@ -1,0 +1,16 @@
+{
+    "munge_sumstats.sumstats_loc": "gs://mattia-ukb/conf/statins.files.txt",
+    "munge_sumstats.gnomad_ref_template": "gs://mattia-ukb/gnomad/v3/filter/gnomad_v3_b38_ref_POP.gz",
+    "munge_sumstats.clean_filter.docker": "gcr.io/fimm-dsgelab-ukbb/saige:0.36.3.2-2",
+    "munge_sumstats.clean_filter.af_col": "AF_Allele2",
+    "munge_sumstats.clean_filter.min_af": 0.001,
+    "munge_sumstats.clean_filter.info_col": "imputationInfo",
+    "munge_sumstats.clean_filter.min_info": 0.6,
+    "munge_sumstats.lift.docker": "gcr.io/fimm-dsgelab-ukbb/meta:1d50c",
+    "munge_sumstats.lift.b37_ref": "gs://mattia-ukb/recomb_map/plink.chr21.GRCh37.map.txt",
+    "munge_sumstats.lift.b38_ref": "gs://mattia-ukb/recomb_map/plink.chr21.GRCh38.map.txt",
+    "munge_sumstats.harmonize.options": "",
+    "munge_sumstats.harmonize.docker": "gcr.io/fimm-dsgelab-ukbb/meta:1d50c",
+    "munge_sumstats.plot.docker": "gcr.io/fimm-dsgelab-ukbb/plots:0.5",
+    "munge_sumstats.plot.loglog_ylim": 30
+}
