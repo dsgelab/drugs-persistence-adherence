@@ -457,3 +457,47 @@ plotAdherenceByAge <- function(df, drug) {
   
   return(plot_grid(p2, p1, align = "h", ncol = 2, axis = "b", rel_widths = c(2/3, 1/3)))
 }
+
+
+
+
+plotAdherenceByAgeViolin <- function(df,drug) {
+  require(ggplot2)
+  require(cowplot)
+  require(grid)
+  require(gridExtra)
+  
+  labs <- table(factor(df$age_bin)) %>%
+    as.numeric()
+  
+  data_summary <- function(x) {
+    m <- mean(x)
+    ymin <- m - sd(x)
+    ymax <- m + sd(x)
+    return(c(y=m, ymin=ymin, ymax=ymax))}
+  
+  p <-ggplot(traj, aes(x = actor(age_bin), 
+                       y = adherence,
+                       fill = factor(age_bin))) +
+    geom_violin(trim=F) +
+    scale_y_continuous(limits = c(0, 1.1)) +
+    geom_hline(aes(yintercept = .8), 
+               color = "black", 
+               alpha = .75) +
+    stat_summary(fun.data = data_summary, 
+                 shape = 18, 
+                 size =.5,
+                 geom = "pointrange", 
+                 color = "red") +
+    scale_fill_brewer(palette = "Blues", 
+                      name = "Group size",
+                      labels = labs) + 
+    ggtitle(paste0("Adherence to ", drug, "by age at initiation")) +
+    xlab("Age bin") +
+    ylab("Adherence") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10),
+          plot.title = element_text(size = 15),
+          legend.text =  element_text(size = 10))
+}
