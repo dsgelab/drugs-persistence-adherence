@@ -1,4 +1,0 @@
-{
-    "test.docker": "gcr.io/fimm-dsgelab-ukbb/saige:0.39.1.fg",
-    "test.bimfile": "gs://fc-9a7c5487-04c9-4182-b3ec-13de7f6b409b/genotype/ukb_snp_chr22_v2.bim"
-}
