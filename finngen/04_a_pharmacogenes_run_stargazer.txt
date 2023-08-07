@@ -1,0 +1,113 @@
+# # # Commands to run stargazer on the whole FinnGen population
+
+# 1. to speed up the run, we first subset the VCF files to the specific regions
+# of interest for each pharmacogenes we want to look at.
+# We run stargazer once with a wrong VCF to get the regions to extract (from std output) 
+
+for gene in slco1b1 cyp2c9 abcg2 cypd6 cyp2c19
+do
+  python3 /home/ivm/dev/stargazer-grc38-v.2.0.0/stargazer \
+  --vcf-file /home/ivm/drugs/data/pharmacogenes/chr22:42116498-42155810.100.vcf \
+  --output-dir /home/ivm/drugs/data/pharmacogenes/stargazer_call_${gene}/ \
+  --target-gene ${gene} \
+  --genome-build grc38
+done
+
+# save the region in a file 
+# gene | chr | region 
+cyp2c19 chr10 chr10:94759680-94858547
+cyp2c9  chr10 chr10:94935657-94993091
+abcg2 chr4  chr4:88087269-88161639
+cyp2d6 chr22 chr22:42116498-42155810
+slco1b1 chr12 chr12:21128193-21242796
+
+
+# 2. If we want to run stargazer on the whole finngen population, parallelising
+# on chunks of 15k samples seems to be the msot efficient way
+# Need to generate .txt files with lists of 15k IDs first (e.g. in R)
+# At the same time, we will first extract only the region of interest for each
+# gene (using tabix) and use that as input
+
+# Run stargazer for all genes, in parallel on chunks of 15k individuals
+
+readarray regions < /home/ivm/drugs/data/pharmacogenes/pharmacogenes_in_finngen_regions_stargazer.txt
+
+for row in "${regions[@]}";do      
+  row_array=(${row})
+  gene=${row_array[0]}
+  chrom=${row_array[1]}
+  region=${row_array[2]}
+    
+  tabix /finngen/library-red/finngen_R10/genotype_1.0/data/finngen_R10_${chrom}.vcf.gz -h ${region} > /home/ivm/drugs/data/pharmacogenes/${region}.vcf
+
+  for i in {1..29};do
+    bcftools view -S /home/ivm/drugs/data/R10_ID_chunks/R10_all_drugs_users_chunk_${i}.txt /home/ivm/drugs/data/pharmacogenes/${region}.vcf > /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf
+
+  mkdir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/
+
+  python3 /home/ivm/dev/stargazer-grc38-v.2.0.0/stargazer \
+  --vcf-file /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf \
+  --output-dir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/chunk_${i}/ \
+  --target-gene ${gene} \
+  --genome-build grc38 \
+  --data-type chip &
+
+  done 
+done
+
+# missing from last run > missing
+[1] "cyp2d6_1"  "cyp2d6_2"  "cyp2d6_4"  "cyp2d6_5"  "cyp2d6_10" "cyp2d6_13" "cyp2d6_14" "cyp2d6_17" "cyp2d6_22" "slco1b1_3"
+ 
+readarray regions < /home/ivm/drugs/data/pharmacogenes/pharmacogenes_in_finngen_regions_stargazer_b.txt
+for row in "${regions[@]}";do      
+row_array=(${row})
+gene=${row_array[0]}
+chrom=${row_array[1]}
+region=${row_array[2]}
+
+if [ "${gene}" = "cyp2d6" ];then
+
+tabix /finngen/library-red/finngen_R10/genotype_1.0/data/finngen_R10_${chrom}.vcf.gz -h ${region} > /home/ivm/drugs/data/pharmacogenes/${region}.vcf
+
+for i in 1 2 4 5 10 13 14 17 22;do
+
+bcftools view -S /home/ivm/drugs/data/R10_ID_chunks/R10_all_drugs_users_chunk_${i}.txt /home/ivm/drugs/data/pharmacogenes/${region}.vcf > /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf
+
+mkdir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/
+python3 /home/ivm/dev/stargazer-grc38-v.2.0.0/stargazer \
+--vcf-file /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf \
+--output-dir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/chunk_${i}/ \
+--target-gene ${gene} \
+--genome-build grc38 \
+--data-type chip &
+
+done 
+fi
+done
+
+readarray regions < /home/ivm/drugs/data/pharmacogenes/pharmacogenes_in_finngen_regions_stargazer_b.txt
+for row in "${regions[@]}";do      
+row_array=(${row})
+gene=${row_array[0]}
+chrom=${row_array[1]}
+region=${row_array[2]}
+
+if [ "${gene}" = "slco1b1" ];then
+
+tabix /finngen/library-red/finngen_R10/genotype_1.0/data/finngen_R10_${chrom}.vcf.gz -h ${region} > /home/ivm/drugs/data/pharmacogenes/${region}.vcf
+
+for i in 3;do
+
+bcftools view -S /home/ivm/drugs/data/R10_ID_chunks/R10_all_drugs_users_chunk_${i}.txt /home/ivm/drugs/data/pharmacogenes/${region}.vcf > /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf
+
+mkdir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/
+python3 /home/ivm/dev/stargazer-grc38-v.2.0.0/stargazer \
+--vcf-file /home/ivm/drugs/data/pharmacogenes/chunks/${region}.chunk_${i}.vcf \
+--output-dir /home/ivm/drugs/data/pharmacogenes/stargazer_call/${gene}/chunk_${i}/ \
+--target-gene ${gene} \
+--genome-build grc38 \
+--data-type chip &
+
+done 
+fi
+done
